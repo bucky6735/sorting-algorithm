@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sorting Algorithms Visualiser</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBAlsQGXdrXlAFs56f4gc0xMGemtjbK0SE",
+    authDomain: "sorting-algorithm-5d17e.firebaseapp.com",
+    projectId: "sorting-algorithm-5d17e",
+    storageBucket: "sorting-algorithm-5d17e.firebasestorage.app",
+    messagingSenderId: "249094596187",
+    appId: "1:249094596187:web:45e39e235bb43520e0017e",
+    databaseURL: "https://sorting-algorithm-5d17e-default-rtdb.europe-west1.firebasedatabase.app/"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const runsRef = ref(db, 'runs');
+
+  // Listen for all results from all students and rebuild graphData
+  onValue(runsRef, (snapshot) => {
+    const statusEl = document.getElementById('firebaseStatus');
+    if (statusEl) statusEl.textContent = '🟢 Connected — showing results from all students';
+    // Clear graphData
+    Object.keys(window.graphData).forEach(k => delete window.graphData[k]);
+    snapshot.forEach(child => {
+      const { algo, size, totalOps } = child.val();
+      if (!window.graphData[algo]) window.graphData[algo] = {};
+      if (!window.graphData[algo][size]) window.graphData[algo][size] = { total: 0, count: 0 };
+      window.graphData[algo][size].total += totalOps;
+      window.graphData[algo][size].count += 1;
+    });
+    if (typeof window.drawGraph === 'function') window.drawGraph();
+  });
+
+  // Expose a function for the rest of the JS to call when a run completes
+  window.firebaseRecordRun = (algo, size, totalOps) => {
+    push(runsRef, { algo, size, totalOps });
+  };
+
+  window.firebaseClearRuns = () => {
+    remove(runsRef);
+  };
+</script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12121a;
+    --border: #1e1e2e;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --accent-a: #00d4ff;
+    --accent-b: #ff6b6b;
+    --compare: #ffd166;
+    --sorted: #06d6a0;
+    --default: #2a2a4a;
+    --bar-a: #00d4ff;
+    --bar-b: #ff6b6b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    color: var(--text);
+    letter-spacing: 0.05em;
+  }
+
+  header span {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 32px;
+    gap: 20px;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-group label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  select, input[type=range] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  input[type=range] {
+    padding: 4px 0;
+    width: 120px;
+    accent-color: var(--accent-a);
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border-radius: 4px;
+    border: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-primary {
+    background: var(--accent-a);
+    color: #000;
+    font-weight: 700;
+  }
+
+  .btn-primary:hover { filter: brightness(1.15); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--muted); }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    flex: 1;
+  }
+
+  .viz-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .panel-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.9rem;
+  }
+
+  .panel-title.a { color: var(--accent-a); }
+  .panel-title.b { color: var(--accent-b); }
+
+  .stats {
+    display: flex;
+    gap: 16px;
+  }
+
+  .stat {
+    text-align: right;
+  }
+
+  .stat-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .stat-value.a { color: var(--accent-a); }
+  .stat-value.b { color: var(--accent-b); }
+
+  .bar-container {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 16px 16px 8px;
+    min-height: 200px;
+  }
+
+  .bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    transition: height 0.05s ease;
+  }
+
+  .status-bar {
+    padding: 8px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    min-height: 32px;
+  }
+
+  .complexity-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .complexity-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 20px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+
+  .complexity-card h3 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+  }
+
+  .complexity-card h3.a { color: var(--accent-a); }
+  .complexity-card h3.b { color: var(--accent-b); }
+
+  .complexity-grid {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    gap: 2px 16px;
+    font-size: 0.75rem;
+  }
+
+  .cg-label { color: var(--muted); }
+  .cg-val { font-family: 'Space Mono', monospace; color: var(--text); }
+
+  .done-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    background: var(--sorted);
+    color: #000;
+    margin-left: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .done-badge.visible { opacity: 1; }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  .controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .btn-step {
+    background: transparent;
+    color: var(--compare);
+    border: 1px solid var(--compare);
+  }
+
+  .btn-step:hover { background: rgba(255,209,102,0.08); }
+  .btn-step:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .mode-indicator {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--compare);
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: rgba(255,209,102,0.08);
+    border: 1px solid rgba(255,209,102,0.3);
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-indicator.visible { display: flex; }
+
+  .graph-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+
+  .graph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .graph-header h2 {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--text);
+  }
+
+  .graph-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .graph-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .graph-legend-line {
+    width: 20px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  canvas#graphCanvas {
+    width: 100%;
+    display: block;
+  }
+
+  .graph-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-family: 'Space Mono', monospace;
+    padding: 40px 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>// SORTING ALGORITHMS</h1>
+  <span>interactive visualiser</span>
+</header>
+
+<div class="main">
+
+  <div class="controls-row">
+    <div class="controls">
+      <div class="control-group">
+        <label>Left Algorithm</label>
+        <select id="algoA">
+          <option value="bubble">Bubble Sort</option>
+          <option value="selection">Selection Sort</option>
+          <option value="insertion">Insertion Sort</option>
+          <option value="merge" selected>Merge Sort</option>
+          <option value="quick">Quick Sort</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Right Algorithm</label>
+        <select id="algoB">
+          <option value="bubble" selected>Bubble Sort</option>
+          <option value="selection">Selection Sort</option>
+          <option value="insertion">Insertion Sort</option>
+          <option value="merge">Merge Sort</option>
+          <option value="quick">Quick Sort</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Array Size</label>
+        <input type="range" id="sizeSlider" min="10" max="80" value="40">
+      </div>
+      <div class="control-group">
+        <label>Speed</label>
+        <input type="range" id="speedSlider" min="1" max="5" value="3">
+      </div>
+    </div>
+    <div class="btn-row">
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#2a2a4a;border:1px solid #444"></div>unsorted</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--compare)"></div>comparing</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--sorted)"></div>sorted</div>
+      </div>
+      <button class="btn btn-secondary" id="shuffleBtn">New Array</button>
+      <button class="btn btn-step" id="stepBtn">⏭ Step</button>
+      <button class="btn btn-primary" id="startBtn">▶ Sort</button>
+      <span class="mode-indicator" id="modeIndicator">⏸ STEP MODE</span>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="viz-panel">
+      <div class="panel-header">
+        <span class="panel-title a" id="titleA">Merge Sort</span>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Comparisons</div>
+            <div class="stat-value a" id="cmpsA">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Swaps</div>
+            <div class="stat-value a" id="swpsA">0</div>
+          </div>
+          <div class="stat" id="writesStatA" style="display:none">
+            <div class="stat-label">Array Writes</div>
+            <div class="stat-value a" id="wrtsA">0</div>
+          </div>
+        </div>
+        <span class="done-badge" id="doneA">DONE</span>
+      </div>
+      <div class="bar-container" id="barsA"></div>
+      <div class="status-bar" id="statusA">Ready</div>
+    </div>
+
+    <div class="viz-panel">
+      <div class="panel-header">
+        <span class="panel-title b" id="titleB">Bubble Sort</span>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Comparisons</div>
+            <div class="stat-value b" id="cmpsB">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Swaps</div>
+            <div class="stat-value b" id="swpsB">0</div>
+          </div>
+          <div class="stat" id="writesStatB" style="display:none">
+            <div class="stat-label">Array Writes</div>
+            <div class="stat-value b" id="wrtsB">0</div>
+          </div>
+        </div>
+        <span class="done-badge" id="doneB">DONE</span>
+      </div>
+      <div class="bar-container" id="barsB"></div>
+      <div class="status-bar" id="statusB">Ready</div>
+    </div>
+  </div>
+
+  <div class="complexity-row">
+    <div class="complexity-card" id="infoA">
+      <div>
+        <h3 class="a" id="infoTitleA">Merge Sort</h3>
+        <div class="complexity-grid" id="infoGridA"></div>
+      </div>
+    </div>
+    <div class="complexity-card" id="infoB">
+      <div>
+        <h3 class="b" id="infoTitleB">Bubble Sort</h3>
+        <div class="complexity-grid" id="infoGridB"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="graph-section">
+    <div class="graph-header">
+      <h2>// OPERATIONS vs ARRAY SIZE</h2>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="graph-legend" id="graphLegend"></div>
+        <button class="btn btn-secondary" id="clearGraphBtn" style="font-size:0.75rem;padding:5px 12px">Clear</button>
+      </div>
+    </div>
+    <div id="graphEmpty" class="graph-empty">Run a sort to plot data points here</div>
+    <div id="firebaseStatus" style="font-family:Space Mono,monospace;font-size:0.68rem;color:var(--muted);margin-top:6px;text-align:right">⏳ Connecting to shared database...</div>
+    <canvas id="graphCanvas" style="display:none"></canvas>
+  </div>
+
+</div>
+
+<script>
+
+const ALGO_COLOURS = {
+  bubble:    '#ff6b6b',
+  selection: '#ffd166',
+  insertion: '#ff9f43',
+  merge:     '#00d4ff',
+  quick:     '#a29bfe'
+};
+
+// graphData[algo][size] = { total: number, count: number }
+const graphData = {};
+window.graphData = graphData;
+const ALGO_INFO = {
+  bubble: {
+    name: 'Bubble Sort',
+    best: 'O(n)', avg: 'O(n²)', worst: 'O(n²)', space: 'O(1)',
+    desc: 'Repeatedly swaps adjacent elements that are in the wrong order.'
+  },
+  selection: {
+    name: 'Selection Sort',
+    best: 'O(n²)', avg: 'O(n²)', worst: 'O(n²)', space: 'O(1)',
+    desc: 'Finds the minimum element and places it at the start each pass.'
+  },
+  insertion: {
+    name: 'Insertion Sort',
+    best: 'O(n)', avg: 'O(n²)', worst: 'O(n²)', space: 'O(1)',
+    desc: 'Builds the sorted array one element at a time by insertion.'
+  },
+  merge: {
+    name: 'Merge Sort',
+    best: 'O(n log n)', avg: 'O(n log n)', worst: 'O(n log n)', space: 'O(n)',
+    desc: 'Divides array in half, sorts each half, then merges them together.'
+  },
+  quick: {
+    name: 'Quick Sort',
+    best: 'O(n log n)', avg: 'O(n log n)', worst: 'O(n²)', space: 'O(log n)',
+    desc: 'Picks a pivot, partitions array around it, then recurses.'
+  }
+};
+
+let array = [];
+let running = false;
+let stepMode = false;
+let stepGenA = null, stepGenB = null;
+let stepDoneA = false, stepDoneB = false;
+
+function genArray(n) {
+  return Array.from({length: n}, (_, i) => Math.floor((i + 1) * 100 / n));
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderBars(containerId, arr, highlights = {}) {
+  const c = document.getElementById(containerId);
+  const max = Math.max(...arr);
+  c.innerHTML = '';
+  arr.forEach((v, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = `${(v / max) * 100}%`;
+    if (highlights.sorted && highlights.sorted.includes(i)) {
+      bar.style.background = 'var(--sorted)';
+    } else if (highlights.comparing && highlights.comparing.includes(i)) {
+      bar.style.background = 'var(--compare)';
+    } else if (highlights.pivot === i) {
+      bar.style.background = '#c77dff';
+    } else {
+      bar.style.background = containerId === 'barsA' ? 'var(--bar-a)' : 'var(--bar-b)';
+      bar.style.opacity = '0.6';
+    }
+    c.appendChild(bar);
+  });
+}
+
+function getDelay() {
+  const speed = parseInt(document.getElementById('speedSlider').value);
+  return [200, 80, 30, 12, 3][speed - 1];
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// --- Algorithm generators ---
+
+async function* bubbleSort(arr) {
+  const a = [...arr];
+  const n = a.length;
+  let cmps = 0, swps = 0;
+  const sorted = new Set();
+  for (let i = 0; i < n - 1; i++) {
+    for (let j = 0; j < n - i - 1; j++) {
+      cmps++;
+      yield { arr: [...a], comparing: [j, j+1], sorted: [...sorted], cmps, swps, status: `Comparing positions ${j} and ${j+1}` };
+      if (a[j] > a[j+1]) {
+        [a[j], a[j+1]] = [a[j+1], a[j]];
+        swps++;
+      }
+    }
+    sorted.add(n - 1 - i);
+  }
+  sorted.add(0);
+  yield { arr: [...a], comparing: [], sorted: [...sorted], cmps, swps, status: 'Sorted!' };
+}
+
+async function* selectionSort(arr) {
+  const a = [...arr];
+  const n = a.length;
+  let cmps = 0, swps = 0;
+  const sorted = new Set();
+  for (let i = 0; i < n - 1; i++) {
+    let minIdx = i;
+    for (let j = i + 1; j < n; j++) {
+      cmps++;
+      yield { arr: [...a], comparing: [minIdx, j], sorted: [...sorted], cmps, swps, status: `Finding minimum from position ${i}` };
+      if (a[j] < a[minIdx]) minIdx = j;
+    }
+    if (minIdx !== i) { [a[i], a[minIdx]] = [a[minIdx], a[i]]; swps++; }
+    sorted.add(i);
+  }
+  sorted.add(n - 1);
+  yield { arr: [...a], comparing: [], sorted: [...sorted], cmps, swps, status: 'Sorted!' };
+}
+
+async function* insertionSort(arr) {
+  const a = [...arr];
+  const n = a.length;
+  let cmps = 0, swps = 0;
+  const sorted = new Set([0]);
+  for (let i = 1; i < n; i++) {
+    let j = i;
+    while (j > 0) {
+      cmps++;
+      yield { arr: [...a], comparing: [j-1, j], sorted: [...sorted], cmps, swps, status: `Inserting element at position ${i}` };
+      if (a[j-1] > a[j]) { [a[j-1], a[j]] = [a[j], a[j-1]]; swps++; j--; }
+      else break;
+    }
+    sorted.add(i);
+  }
+  yield { arr: [...a], comparing: [], sorted: [...Array.from({length: n}, (_, i) => i)], cmps, swps, status: 'Sorted!' };
+}
+
+async function* mergeSort(arr) {
+  const a = [...arr];
+  let cmps = 0, swps = 0, wrts = 0;
+  const sorted = new Set();
+
+  function* merge(left, right, start) {
+    let i = 0, j = 0;
+    let writePos = start;
+    while (i < left.length && j < right.length) {
+      cmps++;
+      const li = start + i, ri = start + left.length + j;
+      yield { arr: [...a], comparing: [li, ri], sorted: [...sorted], cmps, swps, wrts, status: `Merging: comparing ${left[i]} and ${right[j]}` };
+      let chosen;
+      if (left[i] <= right[j]) { chosen = left[i++]; }
+      else { chosen = right[j++]; swps++; }
+      a[writePos++] = chosen; wrts++;
+      yield { arr: [...a], comparing: [writePos - 1], sorted: [...sorted], cmps, swps, wrts, status: `Placing ${chosen} into position ${writePos - 1}` };
+    }
+    while (i < left.length) {
+      a[writePos] = left[i++]; wrts++;
+      yield { arr: [...a], comparing: [writePos], sorted: [...sorted], cmps, swps, wrts, status: `Copying ${a[writePos]} to position ${writePos}` };
+      writePos++;
+    }
+    while (j < right.length) {
+      a[writePos] = right[j++]; wrts++;
+      yield { arr: [...a], comparing: [writePos], sorted: [...sorted], cmps, swps, wrts, status: `Copying ${a[writePos]} to position ${writePos}` };
+      writePos++;
+    }
+  }
+
+  function* sort(start, end) {
+    if (end - start <= 1) return;
+    const mid = Math.floor((start + end) / 2);
+    yield* sort(start, mid);
+    yield* sort(mid, end);
+    yield* merge(a.slice(start, mid), a.slice(mid, end), start);
+  }
+
+  yield* sort(0, a.length);
+  yield { arr: [...a], comparing: [], sorted: [...Array.from({length: a.length}, (_, i) => i)], cmps, swps, wrts, status: 'Sorted!' };
+}
+
+async function* quickSort(arr) {
+  const a = [...arr];
+  let cmps = 0, swps = 0;
+  const sorted = new Set();
+
+  function* sort(low, high) {
+    if (low >= high) { sorted.add(low); return; }
+    const pivot = a[high];
+    let i = low - 1;
+    for (let j = low; j < high; j++) {
+      cmps++;
+      yield { arr: [...a], comparing: [j], pivot: high, sorted: [...sorted], cmps, swps, status: `Partitioning, pivot = ${pivot}` };
+      if (a[j] <= pivot) { i++; [a[i], a[j]] = [a[j], a[i]]; swps++; }
+    }
+    [a[i+1], a[high]] = [a[high], a[i+1]]; swps++;
+    sorted.add(i + 1);
+    yield { arr: [...a], comparing: [], pivot: i+1, sorted: [...sorted], cmps, swps, status: `Pivot ${pivot} placed at position ${i+1}` };
+    yield* sort(low, i);
+    yield* sort(i + 2, high);
+  }
+
+  yield* sort(0, a.length - 1);
+  yield { arr: [...a], comparing: [], sorted: [...Array.from({length: a.length}, (_, i) => i)], cmps, swps, status: 'Sorted!' };
+}
+
+function getGenerator(algo, arr) {
+  switch (algo) {
+    case 'bubble': return bubbleSort(arr);
+    case 'selection': return selectionSort(arr);
+    case 'insertion': return insertionSort(arr);
+    case 'merge': return mergeSort(arr);
+    case 'quick': return quickSort(arr);
+  }
+}
+
+function updateInfoCard(side, algo) {
+  const info = ALGO_INFO[algo];
+  const title = document.getElementById(`infoTitle${side}`);
+  const grid = document.getElementById(`infoGrid${side}`);
+  title.textContent = info.name;
+  grid.innerHTML = `
+    <span class="cg-label">Best</span><span class="cg-val">${info.best}</span><span class="cg-label"></span>
+    <span class="cg-label">Average</span><span class="cg-val">${info.avg}</span><span class="cg-label"></span>
+    <span class="cg-label">Worst</span><span class="cg-val">${info.worst}</span><span class="cg-label"></span>
+    <span class="cg-label">Space</span><span class="cg-val">${info.space}</span><span class="cg-label"></span>
+  `;
+  document.getElementById(`infoGrid${side}`).insertAdjacentHTML('beforeend', `<span class="cg-label" style="grid-column:1/-1;margin-top:4px;font-style:italic">${info.desc}</span>`);
+}
+
+function initDisplay() {
+  const algoA = document.getElementById('algoA').value;
+  const algoB = document.getElementById('algoB').value;
+  document.getElementById('titleA').textContent = ALGO_INFO[algoA].name;
+  document.getElementById('titleB').textContent = ALGO_INFO[algoB].name;
+  updateInfoCard('A', algoA);
+  updateInfoCard('B', algoB);
+  renderBars('barsA', array);
+  renderBars('barsB', array);
+  ['cmpsA','swpsA','cmpsB','swpsB','wrtsA','wrtsB'].forEach(id => document.getElementById(id).textContent = '0');
+  ['statusA','statusB'].forEach(id => document.getElementById(id).textContent = 'Ready');
+  ['doneA','doneB'].forEach(id => document.getElementById(id).classList.remove('visible'));
+  document.getElementById('writesStatA').style.display = algoA === 'merge' ? 'block' : 'none';
+  document.getElementById('writesStatB').style.display = algoB === 'merge' ? 'block' : 'none';
+}
+
+
+function recordRun(algo, size, totalOps) {
+  // If Firebase is available, push to shared DB (onValue listener will update graph)
+  if (typeof window.firebaseRecordRun === 'function') {
+    window.firebaseRecordRun(algo, size, totalOps);
+  } else {
+    // Fallback: local only
+    if (!graphData[algo]) graphData[algo] = {};
+    if (!graphData[algo][size]) graphData[algo][size] = { total: 0, count: 0 };
+    graphData[algo][size].total += totalOps;
+    graphData[algo][size].count += 1;
+    drawGraph();
+  }
+}
+
+window.drawGraph = function drawGraph() {
+  const canvas = document.getElementById('graphCanvas');
+  const empty = document.getElementById('graphEmpty');
+  const legend = document.getElementById('graphLegend');
+
+  // Check if any data
+  const algos = Object.keys(graphData).filter(a => Object.keys(graphData[a]).length > 0);
+  if (algos.length === 0) { canvas.style.display = 'none'; empty.style.display = 'block'; return; }
+  canvas.style.display = 'block';
+  empty.style.display = 'none';
+
+  // Size canvas
+  const W = canvas.parentElement.clientWidth - 40;
+  const H = 320;
+  canvas.width = W * window.devicePixelRatio;
+  canvas.height = H * window.devicePixelRatio;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+  const PAD = { top: 20, right: 30, bottom: 50, left: 70 };
+  const gW = W - PAD.left - PAD.right;
+  const gH = H - PAD.top - PAD.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Compute data ranges
+  let allSizes = [], allOps = [];
+  algos.forEach(a => {
+    Object.entries(graphData[a]).forEach(([sz, d]) => {
+      allSizes.push(parseInt(sz));
+      allOps.push(d.total / d.count);
+    });
+  });
+  const minX = Math.min(...allSizes), maxX = Math.max(...allSizes);
+  const maxY = Math.max(...allOps) * 1.1;
+
+  const toX = v => PAD.left + ((v - minX) / (Math.max(maxX - minX, 1))) * gW;
+  const toY = v => PAD.top + gH - (v / maxY) * gH;
+
+  // Draw theoretical reference curves (faint)
+  const refSizes = Array.from({length: 60}, (_, i) => minX + (i / 59) * (maxX - minX));
+
+  // Determine if any O(n²) or O(n log n) algos present
+  const n2algos = ['bubble','selection','insertion'].filter(a => algos.includes(a));
+  const nlognalgos = ['merge','quick'].filter(a => algos.includes(a));
+
+  function scaleRef(vals) {
+    const refMax = Math.max(...vals);
+    return vals.map(v => (v / refMax) * maxY * 0.85);
+  }
+
+  if (n2algos.length > 0) {
+    const raw = refSizes.map(n => n * n);
+    const scaled = scaleRef(raw);
+    ctx.beginPath();
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    refSizes.forEach((n, i) => {
+      i === 0 ? ctx.moveTo(toX(n), toY(scaled[i])) : ctx.lineTo(toX(n), toY(scaled[i]));
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '10px Space Mono, monospace';
+    ctx.fillText('O(n²)', PAD.left + gW * 0.75, toY(scaled[Math.floor(refSizes.length * 0.75)]) - 6);
+  }
+
+  if (nlognalgos.length > 0) {
+    const raw = refSizes.map(n => n * Math.log2(Math.max(n, 2)));
+    const scaled = scaleRef(raw);
+    ctx.beginPath();
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    refSizes.forEach((n, i) => {
+      i === 0 ? ctx.moveTo(toX(n), toY(scaled[i])) : ctx.lineTo(toX(n), toY(scaled[i]));
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '10px Space Mono, monospace';
+    ctx.fillText('O(n log n)', PAD.left + gW * 0.6, toY(scaled[Math.floor(refSizes.length * 0.6)]) - 6);
+  }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.top + (i / 4) * gH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + gW, y); ctx.stroke();
+    const val = Math.round(maxY * (1 - i / 4));
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px Space Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(val.toLocaleString(), PAD.left - 8, y + 4);
+  }
+
+  // X axis labels
+  const nTicks = Math.min(6, allSizes.length);
+  const tickSizes = [...new Set(allSizes)].sort((a,b) => a-b);
+  const step = Math.max(1, Math.floor(tickSizes.length / nTicks));
+  tickSizes.filter((_, i) => i % step === 0).forEach(sz => {
+    const x = toX(sz);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px Space Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(sz, x, PAD.top + gH + 20);
+  });
+
+  // Axis labels
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px DM Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Array Size', PAD.left + gW / 2, H - 6);
+  ctx.save();
+  ctx.translate(14, PAD.top + gH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Total Operations', 0, 0);
+  ctx.restore();
+
+  // Draw lines and points per algo
+  algos.forEach(algo => {
+    const colour = ALGO_COLOURS[algo];
+    const points = Object.entries(graphData[algo])
+      .map(([sz, d]) => ({ x: parseInt(sz), y: d.total / d.count, count: d.count }))
+      .sort((a, b) => a.x - b.x);
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 2;
+    points.forEach((p, i) => {
+      i === 0 ? ctx.moveTo(toX(p.x), toY(p.y)) : ctx.lineTo(toX(p.x), toY(p.y));
+    });
+    ctx.stroke();
+
+    // Points
+    points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(toX(p.x), toY(p.y), 5, 0, Math.PI * 2);
+      ctx.fillStyle = colour;
+      ctx.fill();
+      ctx.strokeStyle = '#0a0a0f';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Show count if > 1
+      if (p.count > 1) {
+        ctx.fillStyle = colour;
+        ctx.font = 'bold 9px Space Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`n=${p.count}`, toX(p.x), toY(p.y) - 10);
+      }
+    });
+  });
+
+  // Update legend
+  legend.innerHTML = algos.map(a => `
+    <div class="graph-legend-item">
+      <div class="graph-legend-line" style="background:${ALGO_COLOURS[a]}"></div>
+      ${ALGO_INFO[a].name}
+    </div>
+  `).join('');
+}
+
+async function runSort() {
+  if (running) return;
+  running = true;
+  stepMode = false;
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('stepBtn').disabled = true;
+  document.getElementById('shuffleBtn').disabled = true;
+  document.getElementById('modeIndicator').classList.remove('visible');
+
+  const algoA = document.getElementById('algoA').value;
+  const algoB = document.getElementById('algoB').value;
+
+  const genA = getGenerator(algoA, [...array]);
+  const genB = getGenerator(algoB, [...array]);
+
+  let doneA = false, doneB = false;
+
+  while (!doneA || !doneB) {
+    const delay = getDelay();
+    const promises = [];
+
+    if (!doneA) promises.push(genA.next().then(result => ({ side: 'A', result })));
+    if (!doneB) promises.push(genB.next().then(result => ({ side: 'B', result })));
+
+    const updates = await Promise.all(promises);
+    for (const { side, result } of updates) {
+      if (result.done || !result.value) {
+        if (side === 'A') doneA = true;
+        if (side === 'B') doneB = true;
+        continue;
+      }
+      applyUpdate(side, result.value);
+      if (result.value.status === 'Sorted!') {
+        if (side === 'A') doneA = true;
+        if (side === 'B') doneB = true;
+      }
+    }
+
+    await sleep(delay);
+  }
+
+  running = false;
+  document.getElementById('startBtn').disabled = false;
+  document.getElementById('stepBtn').disabled = false;
+  document.getElementById('shuffleBtn').disabled = false;
+
+  // Record ops for graph
+  const size = array.length;
+  ['A','B'].forEach(side => {
+    const algo = document.getElementById(`algo${side}`).value;
+    const cmps = parseInt(document.getElementById(`cmps${side}`).textContent) || 0;
+    const swps = parseInt(document.getElementById(`swps${side}`).textContent) || 0;
+    const wrts = parseInt(document.getElementById(`wrts${side}`).textContent) || 0;
+    recordRun(algo, size, cmps + swps + wrts);
+  });
+}
+
+function applyUpdate(side, value) {
+  const { arr, comparing, sorted, cmps, swps, wrts, status, pivot } = value;
+  renderBars(`bars${side}`, arr, { comparing, sorted, pivot });
+  document.getElementById(`cmps${side}`).textContent = cmps;
+  document.getElementById(`swps${side}`).textContent = swps;
+  if (wrts !== undefined) document.getElementById(`wrts${side}`).textContent = wrts;
+  document.getElementById(`status${side}`).textContent = status;
+  if (status === 'Sorted!') {
+    document.getElementById(`done${side}`).classList.add('visible');
+  }
+}
+
+function enterStepMode() {
+  if (running) return;
+  stepMode = true;
+  stepDoneA = false;
+  stepDoneB = false;
+
+  const algoA = document.getElementById('algoA').value;
+  const algoB = document.getElementById('algoB').value;
+  stepGenA = getGenerator(algoA, [...array]);
+  stepGenB = getGenerator(algoB, [...array]);
+
+  // Reset display
+  initDisplay();
+
+  document.getElementById('startBtn').textContent = '▶ Run';
+  document.getElementById('stepBtn').textContent = '⏭ Next Step';
+  document.getElementById('shuffleBtn').disabled = true;
+  document.getElementById('modeIndicator').classList.add('visible');
+  document.getElementById('algoA').disabled = true;
+  document.getElementById('algoB').disabled = true;
+  document.getElementById('sizeSlider').disabled = true;
+
+
+}
+
+async function doStep() {
+  if (!stepMode) return;
+  document.getElementById('stepBtn').disabled = true;
+
+  const promises = [];
+  if (!stepDoneA) promises.push(stepGenA.next().then(r => ({ side: 'A', result: r })));
+  if (!stepDoneB) promises.push(stepGenB.next().then(r => ({ side: 'B', result: r })));
+
+  const updates = await Promise.all(promises);
+  for (const { side, result } of updates) {
+    if (result.done || !result.value) {
+      if (side === 'A') stepDoneA = true;
+      if (side === 'B') stepDoneB = true;
+      continue;
+    }
+    applyUpdate(side, result.value);
+    if (result.value.status === 'Sorted!') {
+      if (side === 'A') stepDoneA = true;
+      if (side === 'B') stepDoneB = true;
+    }
+  }
+
+  if (stepDoneA && stepDoneB) {
+    exitStepMode(true);
+  } else {
+    document.getElementById('stepBtn').disabled = false;
+  }
+}
+
+function exitStepMode(finished = false) {
+  stepMode = false;
+  document.getElementById('startBtn').textContent = '▶ Sort';
+  document.getElementById('stepBtn').textContent = '⏭ Step';
+  document.getElementById('shuffleBtn').disabled = false;
+  document.getElementById('modeIndicator').classList.remove('visible');
+  document.getElementById('algoA').disabled = false;
+  document.getElementById('algoB').disabled = false;
+  document.getElementById('sizeSlider').disabled = false;
+  document.getElementById('stepBtn').disabled = false;
+}
+
+// Event listeners
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (stepMode) exitStepMode();
+  else runSort();
+});
+
+document.getElementById('stepBtn').addEventListener('click', () => {
+  if (!stepMode) enterStepMode();
+  else doStep();
+});
+
+document.getElementById('shuffleBtn').addEventListener('click', () => {
+  if (running || stepMode) return;
+  const n = parseInt(document.getElementById('sizeSlider').value);
+  array = shuffle(genArray(n));
+  initDisplay();
+});
+
+document.getElementById('sizeSlider').addEventListener('input', () => {
+  if (running || stepMode) return;
+  const n = parseInt(document.getElementById('sizeSlider').value);
+  array = shuffle(genArray(n));
+  initDisplay();
+});
+
+document.getElementById('algoA').addEventListener('change', () => {
+  if (!running && !stepMode) initDisplay();
+});
+
+document.getElementById('algoB').addEventListener('change', () => {
+  if (!running && !stepMode) initDisplay();
+});
+
+document.getElementById('clearGraphBtn').addEventListener('click', () => {
+  if (confirm('This will clear results for ALL students. Are you sure?')) {
+    // Clear local
+    Object.keys(graphData).forEach(k => delete graphData[k]);
+    document.getElementById('graphLegend').innerHTML = '';
+    document.getElementById('graphCanvas').style.display = 'none';
+    document.getElementById('graphEmpty').style.display = 'block';
+    // Clear Firebase if available
+    if (typeof window.firebaseClearRuns === 'function') window.firebaseClearRuns();
+  }
+});
+
+window.addEventListener('resize', () => {
+  if (Object.keys(graphData).length > 0) drawGraph();
+});
+
+// Init
+array = shuffle(genArray(40));
+initDisplay();
+</script>
+</body>
+</html>
